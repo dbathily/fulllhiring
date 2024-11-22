@@ -1,12 +1,14 @@
 # Intro 
 
 Since I was not supposed to use other libraries, I had to re-implement some patterns in a simplified way:
+
 •	An useDebounceValue hook to avoid making a query on every input change
 •	An useAsync hook to manage the states of an asynchronous call
 •	A mini theme system with a hook and a HoC to modularize its usage
 •	A Checkbox component
 
 However, I made a small exception to the rule to make the edit mode configurable. To activate the edit mode:
+
 •	Create a `.env` file at the root with the content `editable=true`. You can copy the provided sample `.env.sample` to `.env`
 •	Restart Metro with `yarn start`
 
