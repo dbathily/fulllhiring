@@ -1,117 +1,142 @@
-/**
- * Sample React Native App
- * https://github.com/facebook/react-native
- *
- * @format
- */
-
-import React from 'react';
-import type {PropsWithChildren} from 'react';
+import React, {useCallback, useEffect, useState} from 'react';
 import {
+  FlatList,
+  ListRenderItemInfo,
   SafeAreaView,
-  ScrollView,
   StatusBar,
   StyleSheet,
-  Text,
-  useColorScheme,
-  View,
 } from 'react-native';
-
-import {
-  Colors,
-  DebugInstructions,
-  Header,
-  LearnMoreLinks,
-  ReloadInstructions,
-} from 'react-native/Libraries/NewAppScreen';
-
-type SectionProps = PropsWithChildren<{
-  title: string;
-}>;
-
-function Section({children, title}: SectionProps): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
-  return (
-    <View style={styles.sectionContainer}>
-      <Text
-        style={[
-          styles.sectionTitle,
-          {
-            color: isDarkMode ? Colors.white : Colors.black,
-          },
-        ]}>
-        {title}
-      </Text>
-      <Text
-        style={[
-          styles.sectionDescription,
-          {
-            color: isDarkMode ? Colors.light : Colors.dark,
-          },
-        ]}>
-        {children}
-      </Text>
-    </View>
-  );
-}
+import useTheme from './theme/useTheme.ts';
+import {Theme} from './theme/Theme.types.ts';
+import Header from './components/Header.tsx';
+import useDebounceValue from './hooks/useDebounceValue.ts';
+import useAsync from './hooks/useAsync.ts';
+import {searchGithubUsers} from './api/users.ts';
+import UserCard from './components/UserCard.tsx';
+import {GithubUser} from './api/api.types.ts';
+import AppBar from './components/AppBar.tsx';
+import {useThemedStyles} from './theme/useThemedStyles.ts';
+import CommonText from './components/CommonText.tsx';
 
 function App(): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
+  const theme = useTheme();
+  const [search, setSearch] = useState('');
+  const query = useDebounceValue(search);
+  const [state, fetch, reset] = useAsync(searchGithubUsers);
+  const [selections, setSelections] = useState<string[] | undefined>(undefined);
+  //Because data is locally mutable with copy and delete actions
+  const [data, setData] = useState<GithubUser[] | undefined>(undefined);
 
-  const backgroundStyle = {
-    backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
-  };
+  const selectAll = useCallback(
+    (value: Boolean) =>
+      setSelections(value ? data?.map(item => item.id) : undefined),
+    [data, setSelections],
+  );
+
+  const select = useCallback((id: string, value: boolean) => {
+    setSelections(prev => {
+      if (prev === undefined) {
+        return [id];
+      } else if (value) {
+        return [...prev, id];
+      } else {
+        return prev.filter(item => item !== id);
+      }
+    });
+  }, []);
+
+  const copy = useCallback(() => {
+    setData(prev =>
+      prev
+        ?.filter(item => selections?.includes(item.id))
+        ?.map(item => ({...item, id: `${item.id}-copy-${prev?.length}`}))
+        ?.concat(prev),
+    );
+  }, [selections]);
+
+  const remove = useCallback(() => {
+    setData(prev => prev?.filter(item => !selections?.includes(item.id)));
+    setSelections(undefined);
+  }, [selections]);
+
+  useEffect(() => {
+    const q = query.trim();
+    if (q !== '') {
+      fetch(q);
+    } else {
+      reset();
+    }
+  }, [fetch, query, reset]);
+
+  useEffect(() => {
+    setSelections(undefined);
+  }, [state.data?.items]);
+
+  useEffect(() => {
+    setData(state.data?.items);
+  }, [state.data?.items]);
+
+  const style = useThemedStyles(styles);
+
+  const renderItem = useCallback(
+    (props: ListRenderItemInfo<GithubUser>) => (
+      <UserCard
+        {...props}
+        selected={selections?.includes(props.item.id)}
+        onSelect={select}
+      />
+    ),
+    [select, selections],
+  );
 
   return (
-    <SafeAreaView style={backgroundStyle}>
+    <SafeAreaView style={style.root}>
       <StatusBar
-        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
-        backgroundColor={backgroundStyle.backgroundColor}
+        barStyle={theme.bareStyle}
+        backgroundColor={style.root.backgroundColor}
       />
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        style={backgroundStyle}>
-        <Header />
-        <View
-          style={{
-            backgroundColor: isDarkMode ? Colors.black : Colors.white,
-          }}>
-          <Section title="Step One">
-            Edit <Text style={styles.highlight}>App.tsx</Text> to change this
-            screen and then come back to see your edits.
-          </Section>
-          <Section title="See Your Changes">
-            <ReloadInstructions />
-          </Section>
-          <Section title="Debug">
-            <DebugInstructions />
-          </Section>
-          <Section title="Learn More">
-            Read the docs to discover what to do next:
-          </Section>
-          <LearnMoreLinks />
-        </View>
-      </ScrollView>
+      <AppBar />
+      <FlatList
+        style={style.list}
+        contentContainerStyle={style.container}
+        indicatorStyle={theme.indicatorStyle}
+        ListHeaderComponent={
+          <Header
+            value={search}
+            onChangeText={setSearch}
+            selected={selections?.length}
+            total={data?.length}
+            onSelectAll={selectAll}
+            onCopy={copy}
+            onRemove={remove}
+          />
+        }
+        ListEmptyComponent={data != null ? <CommonText style={style.emptyText}>No results</CommonText> : undefined}
+        stickyHeaderIndices={[0]}
+        refreshing={state.loading}
+        data={data}
+        keyExtractor={item => item.id}
+        renderItem={renderItem}
+        removeClippedSubviews={true}
+        initialNumToRender={10}
+      />
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  sectionContainer: {
-    marginTop: 32,
-    paddingHorizontal: 24,
+const styles = (theme: Theme) => StyleSheet.create({
+  root: {
+    backgroundColor: theme.palette.background.main,
+    flex: 1,
   },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: '600',
+  list: {
+    flex: 1,
   },
-  sectionDescription: {
-    marginTop: 8,
-    fontSize: 18,
-    fontWeight: '400',
+  container: {
+    gap: theme.spacing(2),
   },
-  highlight: {
-    fontWeight: '700',
+  emptyText: {
+    textAlign: 'center',
   },
 });
 
